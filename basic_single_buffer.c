@@ -7,6 +7,7 @@ Basic KMSDRM with single buffer
 #include <unistd.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
+#include <libdrm/drm_fourcc.h>
 #include <gbm.h>
 #include <errno.h>
 #include <poll.h>
@@ -16,11 +17,17 @@ Basic KMSDRM with single buffer
 #include <GLES2/gl2.h>
 
 #define sleep(x); #x
+#ifdef RG353P
+#define SHADER_HEADER "#version 320 es\nprecision mediump float;\n"
+#elif defined(RPI4)
+#define SHADER_HEADER "#version 310 es\nprecision mediump float;\n"
+#else
+#define SHADER_HEADER "#version 300\nprecision mediump float;\n"
+#endif
 
 // Vertex Shader Source Code
 const char* vertexShaderSource =
-"#version 320 es\n"
-"precision mediump float;\n"
+SHADER_HEADER
 "#if __VERSION__ >= 130\n"
 "#define COMPAT_VARYING out\n"
 "#define COMPAT_ATTRIBUTE in\n"
@@ -37,8 +44,7 @@ const char* vertexShaderSource =
 
 // Fragment Shader Source Code
 const char* fragmentShaderSource =
-"#version 320 es\n"
-"precision mediump float;\n"
+SHADER_HEADER
 "#if __VERSION__ >= 130\n"
 "#define COMPAT_VARYING in\n"
 "#define COMPAT_TEXTURE texture\n"
@@ -52,13 +58,6 @@ const char* fragmentShaderSource =
 "void main(void) {\n"
 "    FragColor = u_Color;\n"
 "}\n";
-
-// Vertex Data for a Triangle
-GLfloat vertices[] = {
-    0.0f,  0.5f, 0.0f,  // Top vertex
-   -0.5f, -0.5f, 0.0f,  // Bottom-left vertex
-    0.5f, -0.5f, 0.0f   // Bottom-right vertex
-};
 
 int64_t get_time_ns(void) {
     struct timespec tv;
@@ -112,11 +111,8 @@ int main(int argc, char* argv[]) {
     // Step 1: Open DRM device
     int drm_fd = open("/dev/dri/card1", O_RDWR | O_CLOEXEC);
     if (drm_fd < 0) {
-        drm_fd = open("/dev/dri/card1", O_RDWR | O_CLOEXEC);
-        if (drm_fd < 0) {
-            perror("Failed to open DRM device");
-            return EXIT_FAILURE;
-        }
+        perror("Failed to open DRM device");
+        return EXIT_FAILURE;
     }
 
     // uint64_t value;
@@ -167,13 +163,13 @@ int main(int argc, char* argv[]) {
     uint32_t crtc_id = encoder->crtc_id;
 
     // Step 2: Set up GBM
-    struct gbm_device* gbm = gbm_create_device(drm_fd);
-    struct gbm_surface* surface = gbm_surface_create(
-        gbm, mode.hdisplay, mode.vdisplay, GBM_FORMAT_ABGR8888,
+    struct gbm_device* gbm_device = gbm_create_device(drm_fd);
+    struct gbm_surface* gbm_surface = gbm_surface_create(
+        gbm_device, mode.hdisplay, mode.vdisplay, DRM_FORMAT_ARGB8888,
         GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 
     // Step 3: Initialize EGL
-    EGLDisplay egl_display = eglGetDisplay((EGLNativeDisplayType) gbm);
+    EGLDisplay egl_display = eglGetDisplay((EGLNativeDisplayType) gbm_device);
     eglInitialize(egl_display, NULL, NULL);
 
     EGLint num_configs;
@@ -199,9 +195,9 @@ int main(int argc, char* argv[]) {
     }
     free(configs);
 #ifdef RG353P
-    #define EGL_OPENGL_ES_BIT_VER EGL_OPENGL_ES3_BIT
+#define EGL_OPENGL_ES_BIT_VER EGL_OPENGL_ES3_BIT
 #elif defined(RPI4)
-    #define EGL_OPENGL_ES_BIT_VER EGL_OPENGL_ES2_BIT
+#define EGL_OPENGL_ES_BIT_VER EGL_OPENGL_ES2_BIT
 #endif
     printf("Needed EGL_SURFACE_TYPE=0x%08X, EGL_RENDERABLE_TYPE=0x%08X\n", EGL_WINDOW_BIT, EGL_OPENGL_ES_BIT_VER);
 
@@ -249,7 +245,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    EGLSurface egl_surface = eglCreateWindowSurface(egl_display, config, (EGLNativeWindowType) surface, NULL);
+    EGLSurface egl_surface = eglCreateWindowSurface(egl_display, config, (EGLNativeWindowType) gbm_surface, NULL);
     if (egl_surface == EGL_NO_SURFACE) {
         printf("Failed to create EGL surface\n");
         return -1;
@@ -263,7 +259,7 @@ int main(int argc, char* argv[]) {
     printf("  shading language version: \"%s\"\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
     printf("  vendor: \"%s\"\n", glGetString(GL_VENDOR));
     printf("  renderer: \"%s\"\n", glGetString(GL_RENDERER));
-    printf("  extensions: \"%s\"\n", gl_exts);
+    // printf("  extensions: \"%s\"\n", gl_exts);
     printf("===================================\n");
 
     // Step 4: Set up OpenGL
@@ -324,15 +320,14 @@ int main(int argc, char* argv[]) {
     struct gbm_bo* bo = NULL;
     struct gbm_bo* next_bo = NULL;
     uint32_t fb_id = 0, next_fb_id = 0;
-    drmEventContext evctx = {
-        .version = DRM_EVENT_CONTEXT_VERSION,
-        .page_flip_handler = NULL, // Custom handler will not be needed for a simple loop
-    };
     glViewport(0, 0, mode.hdisplay, mode.vdisplay);
-    bo = gbm_surface_lock_front_buffer(surface); // Initial buffer
+
+    if (gbm_surface) {
+        eglSwapBuffers(egl_display, egl_surface);
+        bo = gbm_surface_lock_front_buffer(gbm_surface);
+    }
     uint32_t handle = gbm_bo_get_handle(bo).u32;
     uint32_t stride = gbm_bo_get_stride(bo);
-    drmModeAddFB(drm_fd, mode.hdisplay, mode.vdisplay, 24, 32, stride, handle, &fb_id);
     drmModeSetCrtc(drm_fd, crtc_id, fb_id, 0, 0, &connector_id, 1, &mode);
 
     // Check drmModePageFlip is supported?
@@ -356,47 +351,21 @@ int main(int argc, char* argv[]) {
         glDrawArrays(GL_TRIANGLES, 0, 3);
 
         // Get the next buffer
-        next_bo = gbm_surface_lock_front_buffer(surface);
+        eglSwapBuffers(egl_display, egl_surface);
+        next_bo = gbm_surface_lock_front_buffer(gbm_surface);
         uint32_t next_handle = gbm_bo_get_handle(next_bo).u32;
         uint32_t next_stride = gbm_bo_get_stride(next_bo);
         drmModeAddFB(drm_fd, mode.hdisplay, mode.vdisplay, 24, 32, next_stride, next_handle, &next_fb_id);
-        // printf("fb_id=%d next_fb_id=%d\n", fb_id, next_fb_id);
-
-        // // Page flip
-        // if (drmModePageFlip(drm_fd, crtc_id, next_fb_id, DRM_MODE_PAGE_FLIP_EVENT, NULL) < 0) {
-        //     fprintf(stderr, "Failed to queue page flip\n");
-        //     printf("%d\n", __LINE__);
-        //     return -1;
-        //     printf("%d\n", __LINE__);
-        // }
-        // printf("%d\n", __LINE__);
-        // // Wait for the page flip to complete
-        // struct pollfd fds[] = {
-        //     {.fd = drm_fd, .events = POLLIN }
-        // };
-        // while (poll(fds, 1, -1) <= 0) {
-        //     if (errno == EINTR) continue;
-        //     perror("Poll error");
-        //     break;
-
-        //     // Handle DRM events
-        //     drmHandleEvent(drm_fd, &evctx);
-        // }
-        // printf("%d\n", __LINE__);
-
         drmModeSetCrtc(drm_fd, crtc_id, next_fb_id, 0, 0, &connector_id, 1, &mode);
 
         // Release the previous framebuffer
         if (bo) {
             drmModeRmFB(drm_fd, fb_id);
-            gbm_surface_release_buffer(surface, bo);
+            gbm_surface_release_buffer(gbm_surface, bo);
         }
 
         bo = next_bo;
         fb_id = next_fb_id;
-
-        // Swap buffers
-        eglSwapBuffers(egl_display, egl_surface);
         frame++;
     }
 
@@ -414,9 +383,9 @@ int main(int argc, char* argv[]) {
     // printf("%d\n", __LINE__);
     if (resources) drmModeFreeResources(resources);
     // printf("%d\n", __LINE__);
-    if (surface) gbm_surface_destroy(surface);
+    if (gbm_surface) gbm_surface_destroy(gbm_surface);
     // printf("%d\n", __LINE__);
-    if (gbm) gbm_device_destroy(gbm);
+    if (gbm_device) gbm_device_destroy(gbm_device);
     // printf("%d drm_fd=%d\n", __LINE__, drm_fd);
     if (drm_fd > 0) close(drm_fd);
     return 0;
