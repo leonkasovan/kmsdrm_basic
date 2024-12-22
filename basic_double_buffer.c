@@ -543,13 +543,6 @@ int init_egl(struct egl* egl, const struct gbm* gbm, int samples) {
 
     puts("common.c:init_egl: eglQueryString");
     egl_exts_dpy = eglQueryString(egl->display, EGL_EXTENSIONS);
-    // get_proc_dpy(EGL_KHR_image_base, eglCreateImageKHR);
-    // get_proc_dpy(EGL_KHR_image_base, eglDestroyImageKHR);
-    // get_proc_dpy(EGL_KHR_fence_sync, eglCreateSyncKHR);
-    // get_proc_dpy(EGL_KHR_fence_sync, eglDestroySyncKHR);
-    // get_proc_dpy(EGL_KHR_fence_sync, eglWaitSyncKHR);
-    // get_proc_dpy(EGL_KHR_fence_sync, eglClientWaitSyncKHR);
-    // get_proc_dpy(EGL_ANDROID_native_fence_sync, eglDupNativeFenceFDANDROID);
 
     egl->modifiers_supported = has_ext(egl_exts_dpy,
         "EGL_EXT_image_dma_buf_import_modifiers");
@@ -639,10 +632,7 @@ static void drm_fb_destroy_callback(struct gbm_bo* bo, void* data) {
 }
 
 struct drm_fb* drm_fb_get_from_bo(struct gbm_bo* bo) {
-    // puts("drm-common.c:legacy_run:drm_fb_get_from_bo: gbm_bo_get_device");
-    // puts("drm-common.c:legacy_run:drm_fb_get_from_bo: gbm_device_get_fd");
     int drm_fd = gbm_device_get_fd(gbm_bo_get_device(bo));
-    // puts("drm-common.c:legacy_run:drm_fb_get_from_bo: gbm_bo_get_user_data");
     struct drm_fb* fb = gbm_bo_get_user_data(bo);
     uint32_t width, height, format,
         strides[4] = { 0 }, handles[4] = { 0 },
@@ -655,11 +645,8 @@ struct drm_fb* drm_fb_get_from_bo(struct gbm_bo* bo) {
     fb = calloc(1, sizeof * fb);
     fb->bo = bo;
 
-    puts("drm-common.c:legacy_run:drm_fb_get_from_bo: gbm_bo_get_width");
     width = gbm_bo_get_width(bo);
-    puts("drm-common.c:legacy_run:drm_fb_get_from_bo: gbm_bo_get_height");
     height = gbm_bo_get_height(bo);
-    puts("drm-common.c:legacy_run:drm_fb_get_from_bo: gbm_bo_get_format");
     format = gbm_bo_get_format(bo);
 
     if (gbm_bo_get_handle_for_plane && gbm_bo_get_modifier &&
@@ -667,26 +654,19 @@ struct drm_fb* drm_fb_get_from_bo(struct gbm_bo* bo) {
         gbm_bo_get_offset) {
 
         uint64_t modifiers[4] = { 0 };
-        puts("drm-common.c:legacy_run:drm_fb_get_from_bo: gbm_bo_get_modifier");
         modifiers[0] = gbm_bo_get_modifier(bo);
         const int num_planes = gbm_bo_get_plane_count(bo);
-        printf("drm-common.c:legacy_run:drm_fb_get_from_bo: gbm_bo_get_plane_count => num_planes=%d\n", num_planes);
         for (int i = 0; i < num_planes; i++) {
-            printf("drm-common.c:legacy_run:drm_fb_get_from_bo: gbm_bo_get_handle_for_plane plane_no=%d\n", i);
             handles[i] = gbm_bo_get_handle_for_plane(bo, i).u32;
-            printf("drm-common.c:legacy_run:drm_fb_get_from_bo: gbm_bo_get_stride_for_plane plane_no=%d\n", i);
             strides[i] = gbm_bo_get_stride_for_plane(bo, i);
-            printf("drm-common.c:legacy_run:drm_fb_get_from_bo: gbm_bo_get_offset plane_no=%d\n", i);
             offsets[i] = gbm_bo_get_offset(bo, i);
             modifiers[i] = modifiers[0];
         }
 
         if (modifiers[0] && modifiers[0] != DRM_FORMAT_MOD_INVALID) {
             flags = DRM_MODE_FB_MODIFIERS;
-            printf("drm-common.c:legacy_run:drm_fb_get_from_bo: Using modifier %" PRIx64 "\n", modifiers[0]);
         }
 
-        puts("drm-common.c:legacy_run:drm_fb_get_from_bo: drmModeAddFB2WithModifiers");
         ret = drmModeAddFB2WithModifiers(drm_fd, width, height,
             format, handles, strides, offsets,
             modifiers, &fb->fb_id, flags);
@@ -694,12 +674,11 @@ struct drm_fb* drm_fb_get_from_bo(struct gbm_bo* bo) {
 
     if (ret) {
         if (flags)
-            fprintf(stderr, "Modifiers failed!\n");
+            printf("Modifiers failed!\n");
 
         memcpy(handles, (uint32_t[4]) { gbm_bo_get_handle(bo).u32, 0, 0, 0 }, 16);
         memcpy(strides, (uint32_t[4]) { gbm_bo_get_stride(bo), 0, 0, 0 }, 16);
         memset(offsets, 0, 16);
-        puts("drm-common.c:legacy_run:drm_fb_get_from_bo: drmModeAddFB2");
         ret = drmModeAddFB2(drm_fd, width, height, format, handles, strides, offsets, &fb->fb_id, 0);
     }
 
@@ -708,10 +687,7 @@ struct drm_fb* drm_fb_get_from_bo(struct gbm_bo* bo) {
         free(fb);
         return NULL;
     }
-
-    puts("drm-common.c:legacy_run:drm_fb_get_from_bo: gbm_bo_set_user_data");
     gbm_bo_set_user_data(bo, fb, drm_fb_destroy_callback);
-
     return fb;
 }
 
@@ -721,9 +697,7 @@ static void page_flip_handler(int fd, unsigned int frame,
     (void) fd, (void) frame, (void) sec, (void) usec;
 
     int* waiting_for_flip = data;
-    // printf("drm-legacy.c: page_flip_handler BEGIN waiting_for_flip=%d\n", *waiting_for_flip);
     *waiting_for_flip = 0;
-    // printf("drm-legacy.c: page_flip_handler END waiting_for_flip=%d\n", *waiting_for_flip);
 }
 
 static int run_gl_loop(const struct gbm* gbm, const struct egl* egl, struct drm* drm) {
@@ -739,9 +713,7 @@ static int run_gl_loop(const struct gbm* gbm, const struct egl* egl, struct drm*
     int ret;
 
     if (gbm->surface) {
-        puts("drm-legacy.c:legacy_run: eglSwapBuffers");
         eglSwapBuffers(egl->display, egl->surface);
-        puts("drm-legacy.c:legacy_run: gbm_surface_lock_front_buffer");
         bo = gbm_surface_lock_front_buffer(gbm->surface);
     } else {
         printf("FATAL ERROR, gbm->surface is NULL\n");
@@ -754,7 +726,6 @@ static int run_gl_loop(const struct gbm* gbm, const struct egl* egl, struct drm*
     }
 
     /* set mode: */
-    puts("drm-legacy.c:legacy_run: drmModeSetCrtc");
     ret = drmModeSetCrtc(drm->fd, drm->crtc_id, fb->fb_id, 0, 0, &drm->connector_id, 1, drm->mode);
     if (ret) {
         printf("failed to set mode: %s\n", strerror(errno));
@@ -762,11 +733,7 @@ static int run_gl_loop(const struct gbm* gbm, const struct egl* egl, struct drm*
     }
 
     start_time = report_time = get_time_ns();
-
-    // drm->count = 500;
     while (i < drm->count) {
-        // printf("\ndrm-legacy.c:legacy_run: i=%d drm.count=%d\n", i, drm->count);
-        // unsigned frame = i;
         struct gbm_bo* next_bo;
         int waiting_for_flip = 1;
 
@@ -777,21 +744,12 @@ static int run_gl_loop(const struct gbm* gbm, const struct egl* egl, struct drm*
             start_time = report_time = get_time_ns();
         }
 
-        // if (!gbm->surface) {
-        //     puts("drm-legacy.c: glBindFramebuffer");
-        //     glBindFramebuffer(GL_FRAMEBUFFER, egl->fbs[frame % NUM_BUFFERS].fb);
-        // }
-
-        // puts("drm-legacy.c:legacy_run: egl->draw");
-        // egl->draw(i++);
         glClearColor(0.0f, 0.5f, 1.0f, 1.0f); // Blue background
         glClear(GL_COLOR_BUFFER_BIT);
         glDrawArrays(GL_TRIANGLES, 0, 3);
 
         if (gbm->surface) {
-            // puts("drm-legacy.c:legacy_run: eglSwapBuffers");
             eglSwapBuffers(egl->display, egl->surface);
-            // printf("common.c:legacy_run: gbm_surface_lock_front_buffer => next_bo=%p\n", next_bo);
             next_bo = gbm_surface_lock_front_buffer(gbm->surface);
         }
         fb = drm_fb_get_from_bo(next_bo);
@@ -805,7 +763,6 @@ static int run_gl_loop(const struct gbm* gbm, const struct egl* egl, struct drm*
          * hw composition
          */
 
-         // printf("drm-legacy.c:legacy_run: drmModePageFlip waiting_for_flip=%d\n", waiting_for_flip);
         ret = drmModePageFlip(drm->fd, drm->crtc_id, fb->fb_id,
             DRM_MODE_PAGE_FLIP_EVENT, &waiting_for_flip);
         if (ret) {
@@ -818,7 +775,6 @@ static int run_gl_loop(const struct gbm* gbm, const struct egl* egl, struct drm*
             FD_SET(0, &fds);
             FD_SET(drm->fd, &fds);
 
-            // puts("drm-legacy.c:legacy_run: select");
             ret = select(drm->fd + 1, &fds, NULL, NULL, NULL);
             if (ret < 0) {
                 printf("select err: %s\n", strerror(errno));
@@ -830,7 +786,6 @@ static int run_gl_loop(const struct gbm* gbm, const struct egl* egl, struct drm*
                 printf("user interrupted!\n");
                 return 0;
             }
-            // puts("drm-legacy.c:legacy_run: drmHandleEvent");
             drmHandleEvent(drm->fd, &evctx);
         }
 
@@ -845,23 +800,16 @@ static int run_gl_loop(const struct gbm* gbm, const struct egl* egl, struct drm*
 
         /* release last buffer to render on again: */
         if (gbm->surface) {
-            // puts("drm-legacy.c:legacy_run: gbm_surface_release_buffer");
             gbm_surface_release_buffer(gbm->surface, bo);
         }
         bo = next_bo;
         i++;
     }
-
-    // finish_perfcntrs();
-
     cur_time = get_time_ns();
     double elapsed_time = cur_time - start_time;
     double secs = elapsed_time / (double) NSEC_PER_SEC;
     unsigned frames = i - 1;  /* first frame ignored */
     printf("Rendered %u frames in %f sec (%f fps)\n", frames, secs, (double) frames / secs);
-
-    // dump_perfcntrs(frames, elapsed_time);
-
     return 0;
 }
 
@@ -907,12 +855,8 @@ const char* fragmentShaderSource =
 
 int main(int argc, char* argv[]) {
     const char* device = NULL;
-    // const char* video = NULL;
-    // const char* shadertoy = NULL;
-    // const char* perfcntr = NULL;
     char mode_str[DRM_DISPLAY_MODE_LEN] = "";
     char* p;
-    // enum mode mode = SMOOTH;
 #ifdef DRM_FORMAT_USE_NO_TRANSPARENCY
     uint32_t format = DRM_FORMAT_XRGB8888;
 #else
@@ -920,12 +864,7 @@ int main(int argc, char* argv[]) {
 #endif
     uint64_t modifier = DRM_FORMAT_MOD_LINEAR;
     int samples = 0;
-    // int atomic = 0;
-    // int gears = 0;
-    // int offscreen = 0;
     int connector_id = -1;
-    // int opt;
-    // unsigned int len;
     unsigned int vrefresh = 0;
     unsigned int count = 500;
     bool nonblocking = false;
@@ -997,4 +936,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-
