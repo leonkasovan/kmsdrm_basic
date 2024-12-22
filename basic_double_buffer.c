@@ -12,7 +12,6 @@ int64_t get_time_ns(void) {
 }
 
 int create_program(const char* vs_src, const char* fs_src) {
-    puts("common.c: create_program");
     GLuint vertex_shader, fragment_shader, program;
     GLint ret;
 
@@ -62,24 +61,19 @@ int create_program(const char* vs_src, const char* fs_src) {
             printf("%s", log);
             free(log);
         }
-
         return -1;
     }
 
     program = glCreateProgram();
-
     glAttachShader(program, vertex_shader);
     glAttachShader(program, fragment_shader);
-
     return program;
 }
 
 int link_program(unsigned program) {
-    puts("common.c: link_program");
     GLint ret;
 
     glLinkProgram(program);
-
     glGetProgramiv(program, GL_LINK_STATUS, &ret);
     if (!ret) {
         char* log;
@@ -93,15 +87,12 @@ int link_program(unsigned program) {
             printf("%s", log);
             free(log);
         }
-
         return -1;
     }
-
     return 0;
 }
 
 static int get_resources(int fd, drmModeRes** resources) {
-    puts("drm-common.c:get_resources:find_drm_device: drmModeGetResources");
     *resources = drmModeGetResources(fd);
     if (*resources == NULL)
         return -1;
@@ -112,7 +103,6 @@ static int find_drm_device(drmModeRes** resources) {
     drmDevicePtr devices[MAX_DRM_DEVICES] = { NULL };
     int num_devices, fd = -1;
 
-    puts("drm-common.c:find_drm_device: drmGetDevices2");
     num_devices = drmGetDevices2(0, devices, MAX_DRM_DEVICES);
     if (num_devices < 0) {
         printf("drmGetDevices2 failed: %s\n", strerror(-num_devices));
@@ -129,18 +119,16 @@ static int find_drm_device(drmModeRes** resources) {
          * drmModeResources, it means it's also a
          * KMS-capable device.
          */
-        printf("drm-common.c:find_drm_device: open %s\n", device->nodes[DRM_NODE_RENDER]);
+        printf("Open drm %s\n", device->nodes[DRM_NODE_RENDER]);
         fd = open(device->nodes[DRM_NODE_PRIMARY], O_RDWR);
         if (fd < 0)
             continue;
         ret = get_resources(fd, resources);
         if (!ret)
             break;
-        puts("drm-common.c:find_drm_device: close");
         close(fd);
         fd = -1;
     }
-    puts("drm-common.c:find_drm_device: drmFreeDevices");
     drmFreeDevices(devices, num_devices);
 
     if (fd < 0)
@@ -162,7 +150,6 @@ static int32_t find_crtc_for_encoder(const drmModeRes* resources,
             return crtc_id;
         }
     }
-
     /* no match found */
     return -1;
 }
@@ -173,20 +160,16 @@ static int32_t find_crtc_for_connector(const struct drm* drm, const drmModeRes* 
 
     for (i = 0; i < connector->count_encoders; i++) {
         const uint32_t encoder_id = connector->encoders[i];
-        puts("drm-common.c: drmModeGetEncoder");
         drmModeEncoder* encoder = drmModeGetEncoder(drm->fd, encoder_id);
 
         if (encoder) {
             const int32_t crtc_id = find_crtc_for_encoder(resources, encoder);
-
-            puts("drm-common.c: drmModeFreeEncoder");
             drmModeFreeEncoder(encoder);
             if (crtc_id != 0) {
                 return crtc_id;
             }
         }
     }
-
     /* no match found */
     return -1;
 }
@@ -199,25 +182,19 @@ static drmModeConnector* find_drm_connector(int fd, drmModeRes* resources,
     if (connector_id >= 0) {
         if (connector_id >= resources->count_connectors)
             return NULL;
-
-        puts("drm-common.c:find_drm_connector: drmModeGetConnector");
         connector = drmModeGetConnector(fd, resources->connectors[connector_id]);
         if (connector && connector->connection == DRM_MODE_CONNECTED)
             return connector;
-
-        puts("drm-common.c:find_drm_connector: drmModeFreeConnector");
         drmModeFreeConnector(connector);
         return NULL;
     }
 
     for (i = 0; i < resources->count_connectors; i++) {
-        puts("drm-common.c:find_drm_connector: drmModeGetConnector");
         connector = drmModeGetConnector(fd, resources->connectors[i]);
         if (connector && connector->connection == DRM_MODE_CONNECTED) {
             /* it's connected, let's use this! */
             break;
         }
-        puts("drm-common.c:find_drm_connector: drmModeFreeConnector");
         drmModeFreeConnector(connector);
         connector = NULL;
     }
@@ -233,7 +210,6 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str,
     int i, ret, area;
 
     if (device) {
-        puts("drm-common.c:init_drm: open");
         drm->fd = open(device, O_RDWR);
         ret = get_resources(drm->fd, &resources);
         if (ret < 0 && errno == EOPNOTSUPP)
@@ -254,7 +230,6 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str,
 
     /* find a connected connector: */
     connector = find_drm_connector(drm->fd, resources, connector_id);
-
     if (!connector) {
         /* we could be fancy and listen for hotplug events and wait for
          * a connector..
@@ -304,11 +279,9 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str,
 
     /* find encoder: */
     for (i = 0; i < resources->count_encoders; i++) {
-        puts("drm-common.c:init_drm: drmModeGetEncoder");
         encoder = drmModeGetEncoder(drm->fd, resources->encoders[i]);
         if (encoder->encoder_id == connector->encoder_id)
             break;
-        puts("drm-common.c:init_drm: drmModeFreeEncoder");
         drmModeFreeEncoder(encoder);
         encoder = NULL;
     }
@@ -321,7 +294,6 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str,
             printf("no crtc found!\n");
             return -1;
         }
-
         drm->crtc_id = crtc_id;
     }
 
@@ -331,20 +303,15 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str,
             break;
         }
     }
-
-    puts("drm-common.c:init_drm: drmModeFreeResources");
     drmModeFreeResources(resources);
-
     drm->connector_id = connector->connector_id;
     drm->count = count;
     drm->nonblocking = nonblocking;
-
     return 0;
 }
 
 int init_surface(struct gbm* gbm, uint64_t modifier) {
     if (gbm_surface_create_with_modifiers) {
-        puts("common.c:init_gbm:init_surface: gbm_surface_create_with_modifiers");
         gbm->surface = gbm_surface_create_with_modifiers(gbm->dev, gbm->width, gbm->height, gbm->format, &modifier, 1);
     }
 
@@ -353,16 +320,12 @@ int init_surface(struct gbm* gbm, uint64_t modifier) {
             printf("Modifiers requested but support isn't available\n");
             return -2;
         }
-        puts("common.c:init_gbm:init_surface: gbm_surface_create");
         gbm->surface = gbm_surface_create(gbm->dev, gbm->width, gbm->height, gbm->format, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
-
     }
-
     if (!gbm->surface) {
         printf("failed to create gbm surface\n");
         return -3;
     }
-
     return 0;
 }
 
@@ -427,7 +390,6 @@ static bool egl_choose_config(EGLDisplay egl_display, const EGLint* attribs,
     EGLConfig* configs;
     int config_index = -1;
 
-    printf("common.c:init_egl:egl_choose_config: eglGetConfigs visual_id=%d\n", visual_id);
     if (!eglGetConfigs(egl_display, NULL, 0, &count) || count < 1) {
         printf("No EGL configs to choose from.\n");
         return false;
@@ -436,26 +398,20 @@ static bool egl_choose_config(EGLDisplay egl_display, const EGLint* attribs,
     if (!configs)
         return false;
 
-    puts("common.c:init_egl:egl_choose_config: eglChooseConfig");
     if (!eglChooseConfig(egl_display, attribs, configs,
         count, &matched) || !matched) {
         printf("No EGL configs with appropriate attributes.\n");
         goto out;
     }
-    printf("common.c:init_egl:egl_choose_config: Found %d matched configs\n", matched);
-
     if (!visual_id) {
         config_index = 0;
-        printf("common.c:init_egl:egl_choose_config: Use first[0] matched configs\n");
+        printf("Use first[0] matched EGL configs\n");
     }
-
-
     if (config_index == -1)
         config_index = match_config_to_visual(egl_display, visual_id, configs, matched);
-
     if (config_index != -1) {
         *config_out = configs[config_index];
-        printf("common.c:init_egl:egl_choose_config: Use index [%d] matched configs\n", config_index);
+        printf("common.c:init_egl:egl_choose_config: Use index [%d] matched EGL configs\n", config_index);
     }
 
 out:
@@ -522,54 +478,43 @@ int init_egl(struct egl* egl, const struct gbm* gbm, int samples) {
 		} \
 		} while (0)
 
-    puts("common.c:init_egl: eglQueryString");
     egl_exts_client = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
     get_proc_client(EGL_EXT_platform_base, eglGetPlatformDisplayEXT);
 
     if (egl->eglGetPlatformDisplayEXT) {
-        puts("common.c:init_egl: eglGetPlatformDisplayEXT");
         egl->display = egl->eglGetPlatformDisplayEXT(EGL_PLATFORM_GBM_KHR,
             gbm->dev, NULL);
     } else {
-        puts("common.c:init_egl: eglGetDisplay");
         egl->display = eglGetDisplay((EGLNativeDisplayType) gbm->dev);
     }
 
-    puts("common.c:init_egl: eglInitialize");
     if (!eglInitialize(egl->display, &major, &minor)) {
         printf("failed to initialize\n");
         return -1;
     }
-
-    puts("common.c:init_egl: eglQueryString");
     egl_exts_dpy = eglQueryString(egl->display, EGL_EXTENSIONS);
-
     egl->modifiers_supported = has_ext(egl_exts_dpy,
         "EGL_EXT_image_dma_buf_import_modifiers");
 
-    printf("init_egl: Using display %p with EGL version %d.%d\n",
-        egl->display, major, minor);
+    printf("Using EGL Library version %d.%d\n", major, minor);
 
     printf("===================================\n");
     printf("EGL information:\n");
     printf("  version: \"%s\"\n", eglQueryString(egl->display, EGL_VERSION));
     printf("  vendor: \"%s\"\n", eglQueryString(egl->display, EGL_VENDOR));
-    printf("  client extensions: \"%s\"\n", egl_exts_client);
-    printf("  display extensions: \"%s\"\n", egl_exts_dpy);
+    // printf("  client extensions: \"%s\"\n", egl_exts_client);
+    // printf("  display extensions: \"%s\"\n", egl_exts_dpy);
     printf("===================================\n");
 
-    puts("common.c:init_egl: eglBindAPI");
     if (!eglBindAPI(EGL_OPENGL_ES_API)) {
         printf("failed to bind api EGL_OPENGL_ES_API\n");
         return -1;
     }
-
     if (!egl_choose_config(egl->display, config_attribs, gbm->format,
         &egl->config)) {
         printf("failed to choose config\n");
         return -1;
     }
-
     EGLint red_size, green_size, blue_size, alpha_size, depth_size, stencil_size, surface_type, render_type;
     eglGetConfigAttrib(egl->display, egl->config, EGL_RED_SIZE, &red_size);
     eglGetConfigAttrib(egl->display, egl->config, EGL_GREEN_SIZE, &green_size);
@@ -580,19 +525,15 @@ int init_egl(struct egl* egl, const struct gbm* gbm, int samples) {
     eglGetConfigAttrib(egl->display, egl->config, EGL_SURFACE_TYPE, &surface_type);
     eglGetConfigAttrib(egl->display, egl->config, EGL_RENDERABLE_TYPE, &render_type);
     printf("Chosen Config R:%d G:%d B:%d A:%d Depth:%d Stencil:%d Surface=0x%08X Render=0x%08X\n", red_size, green_size, blue_size, alpha_size, depth_size, stencil_size, surface_type, render_type);
-
-    puts("common.c:init_egl: eglCreateContext");
     egl->context = eglCreateContext(egl->display, egl->config,
         EGL_NO_CONTEXT, context_attribs);
     if (egl->context == EGL_NO_CONTEXT) {
         printf("failed to create context\n");
         return -1;
     }
-
     if (!gbm->surface) {
         egl->surface = EGL_NO_SURFACE;
     } else {
-        puts("common.c:init_egl: eglCreateWindowSurface");
         egl->surface = eglCreateWindowSurface(egl->display, egl->config,
             (EGLNativeWindowType) gbm->surface, NULL);
         if (egl->surface == EGL_NO_SURFACE) {
@@ -600,34 +541,27 @@ int init_egl(struct egl* egl, const struct gbm* gbm, int samples) {
             return -1;
         }
     }
-
     /* connect the context to the surface */
-    puts("common.c:init_egl: eglMakeCurrent");
     eglMakeCurrent(egl->display, egl->surface, egl->surface, egl->context);
-
     gl_exts = (char*) glGetString(GL_EXTENSIONS);
-    printf("OpenGL ES 2.x information:\n");
+    printf("OpenGL ES information:\n");
     printf("  version: \"%s\"\n", glGetString(GL_VERSION));
     printf("  shading language version: \"%s\"\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
     printf("  vendor: \"%s\"\n", glGetString(GL_VENDOR));
     printf("  renderer: \"%s\"\n", glGetString(GL_RENDERER));
-    printf("  extensions: \"%s\"\n", gl_exts);
+    // printf("  extensions: \"%s\"\n", gl_exts);
     printf("===================================\n");
 
     return 0;
 }
 
 static void drm_fb_destroy_callback(struct gbm_bo* bo, void* data) {
-    puts("drm-common.c: gbm_bo_get_device");
-    puts("drm-common.c: gbm_device_get_fd");
     int drm_fd = gbm_device_get_fd(gbm_bo_get_device(bo));
     struct drm_fb* fb = data;
-
     if (fb->fb_id) {
         puts("drm-common.c: drmModeRmFB");
         drmModeRmFB(drm_fd, fb->fb_id);
     }
-
     free(fb);
 }
 
@@ -817,10 +751,17 @@ static struct gbm gbm;
 static struct drm drm;
 static struct egl egl;
 
+#ifdef RG353P
+#define SHADER_HEADER "#version 320 es\nprecision mediump float;\n"
+#elif defined(RPI4)
+#define SHADER_HEADER "#version 300 es\nprecision mediump float;\n"
+#else
+#define SHADER_HEADER "#version 300\nprecision mediump float;\n"
+#endif
+
 // Vertex Shader Source Code
 const char* vertexShaderSource =
-"#version 320 es\n"
-"precision mediump float;\n"
+SHADER_HEADER
 "#if __VERSION__ >= 130\n"
 "#define COMPAT_VARYING out\n"
 "#define COMPAT_ATTRIBUTE in\n"
@@ -837,8 +778,7 @@ const char* vertexShaderSource =
 
 // Fragment Shader Source Code
 const char* fragmentShaderSource =
-"#version 320 es\n"
-"precision mediump float;\n"
+SHADER_HEADER
 "#if __VERSION__ >= 130\n"
 "#define COMPAT_VARYING in\n"
 "#define COMPAT_TEXTURE texture\n"
@@ -875,7 +815,7 @@ int main(int argc, char* argv[]) {
         printf("failed to initialize DRM. Code %d\n", ret);
         return ret;
     } else {
-        printf("initialize DRM [OK]\n");
+        printf("Initialize DRM Fullscreen %dx%d [OK]\n", drm.mode->hdisplay, drm.mode->vdisplay);
     }
 
     ret = init_gbm(&gbm, drm.fd, drm.mode->hdisplay, drm.mode->vdisplay, format, modifier);
@@ -883,7 +823,7 @@ int main(int argc, char* argv[]) {
         printf("failed to initialize GBM. Code %d\n", ret);
         return ret;
     } else {
-        printf("initialize GBM gbm.surface=%p [OK]\n", gbm.surface);
+        printf("Initialize GBM [OK]\n");
     }
 
     ret = init_egl(&egl, &gbm, samples);
