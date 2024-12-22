@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "egl.h": "c",
+        "poll.h": "c",
+        "typeinfo": "c"
+    }
+}
