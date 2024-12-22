@@ -14,7 +14,6 @@ Basic KMSDRM with single buffer
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
-#include <drm/drm_mode.h>
 
 #define sleep(x); #x
 
@@ -111,7 +110,7 @@ GLuint createProgram() {
 
 int main(int argc, char* argv[]) {
     // Step 1: Open DRM device
-    int drm_fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
+    int drm_fd = open("/dev/dri/card1", O_RDWR | O_CLOEXEC);
     if (drm_fd < 0) {
         drm_fd = open("/dev/dri/card1", O_RDWR | O_CLOEXEC);
         if (drm_fd < 0) {
@@ -199,18 +198,19 @@ int main(int argc, char* argv[]) {
         }
     }
     free(configs);
-    printf("Needed EGL_SURFACE_TYPE=0x%08X, EGL_RENDERABLE_TYPE=0x%08X\n", EGL_WINDOW_BIT, EGL_OPENGL_ES3_BIT);
+#ifdef RG353P
+    #define EGL_OPENGL_ES_BIT_VER EGL_OPENGL_ES3_BIT
+#elif defined(RPI4)
+    #define EGL_OPENGL_ES_BIT_VER EGL_OPENGL_ES2_BIT
+#endif
+    printf("Needed EGL_SURFACE_TYPE=0x%08X, EGL_RENDERABLE_TYPE=0x%08X\n", EGL_WINDOW_BIT, EGL_OPENGL_ES_BIT_VER);
 
 
     EGLConfig config;
     EGLint matched = 0;
     EGLint config_attribs[] = {
     EGL_SURFACE_TYPE, EGL_WINDOW_BIT, // Required for rendering to a GBM surface
-#ifdef RG353P
-    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT, // OpenGL ES 3.0
-#elif defined(RPI4)
-    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, // OpenGL ES 2.0
-#endif
+    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES_BIT_VER, // OpenGL ES version 3.0 or 2.0
     EGL_RED_SIZE, 8,                 // Red component size
     EGL_GREEN_SIZE, 8,               // Green component size
     EGL_BLUE_SIZE, 8,                // Blue component size
@@ -236,9 +236,11 @@ int main(int argc, char* argv[]) {
     printf("Chosen Config R:%d G:%d B:%d A:%d Depth:%d Stencil:%d Surface=0x%08X Render=0x%08X\n", red_size, green_size, blue_size, alpha_size, depth_size, stencil_size, surface_type, render_type);
 
     static const EGLint context_attribs[] = {
-#ifdef RG353P        
+#ifdef RG353P
         EGL_CONTEXT_CLIENT_VERSION, 3,
-#endif        
+#elif defined(RPI4)
+        EGL_CONTEXT_CLIENT_VERSION, 2,
+#endif
         EGL_NONE
     };
     EGLContext egl_context = eglCreateContext(egl_display, config, EGL_NO_CONTEXT, context_attribs);
@@ -281,7 +283,7 @@ int main(int argc, char* argv[]) {
     glAttachShader(program, vertex_shader);
     glAttachShader(program, fragment_shader);
     glLinkProgram(program);
-    // GLint ret;
+    GLint ret;
     glGetProgramiv(program, GL_LINK_STATUS, &ret);
     if (!ret) {
         char* log;
