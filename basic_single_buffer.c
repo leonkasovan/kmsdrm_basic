@@ -113,17 +113,20 @@ int main(int argc, char* argv[]) {
     // Step 1: Open DRM device
     int drm_fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
     if (drm_fd < 0) {
-        perror("Failed to open DRM device");
-        return EXIT_FAILURE;
+        drm_fd = open("/dev/dri/card1", O_RDWR | O_CLOEXEC);
+        if (drm_fd < 0) {
+            perror("Failed to open DRM device");
+            return EXIT_FAILURE;
+        }
     }
 
-    uint64_t value;
-    int ret = drmGetCap(drm_fd, DRM_CAP_ASYNC_PAGE_FLIP, &value);
-    if (ret == 0 && value) {
-        printf("[INFO] Asynchronous page flipping is supported.\n");
-    } else {
-        printf("[INFO] Asynchronous page flipping is not supported.\n");
-    }
+    // uint64_t value;
+    // int ret = drmGetCap(drm_fd, DRM_CAP_ASYNC_PAGE_FLIP, &value);
+    // if (ret == 0 && value) {
+    //     printf("[INFO] Asynchronous page flipping is supported.\n");
+    // } else {
+    //     printf("[INFO] Asynchronous page flipping is not supported.\n");
+    // }
 
     drmModeRes* resources = drmModeGetResources(drm_fd);
     if (!resources) {
@@ -205,6 +208,8 @@ int main(int argc, char* argv[]) {
     EGL_SURFACE_TYPE, EGL_WINDOW_BIT, // Required for rendering to a GBM surface
 #ifdef RG353P
     EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT, // OpenGL ES 3.0
+#elif defined(RPI4)
+    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, // OpenGL ES 2.0
 #endif
     EGL_RED_SIZE, 8,                 // Red component size
     EGL_GREEN_SIZE, 8,               // Green component size
@@ -342,7 +347,7 @@ int main(int argc, char* argv[]) {
 
     int frame = 0;
     int64_t start_time = get_time_ns();
-    while (frame < 500) {
+    while (frame < 300) {
         // Render
         glClearColor(0.0f, 0.5f, 1.0f, 1.0f); // Blue background
         glClear(GL_COLOR_BUFFER_BIT);

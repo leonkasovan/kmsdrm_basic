@@ -119,7 +119,7 @@ static int find_drm_device(drmModeRes** resources) {
          * drmModeResources, it means it's also a
          * KMS-capable device.
          */
-        printf("Open drm %s\n", device->nodes[DRM_NODE_RENDER]);
+        printf("Opening DRM device %s\n", device->nodes[DRM_NODE_PRIMARY]);
         fd = open(device->nodes[DRM_NODE_PRIMARY], O_RDWR);
         if (fd < 0)
             continue;
@@ -331,7 +331,6 @@ int init_surface(struct gbm* gbm, uint64_t modifier) {
 
 int init_gbm(struct gbm* gbm, int drm_fd, int w, int h, uint32_t format,
     uint64_t modifier) {
-    puts("common.c:init_gbm: gbm_create_device");
     gbm->dev = gbm_create_device(drm_fd);
     if (!gbm->dev)
         return -1;
@@ -370,12 +369,9 @@ static int match_config_to_visual(EGLDisplay egl_display, EGLint visual_id, EGLC
     for (i = 0; i < count; ++i) {
         EGLint id;
 
-        if (!eglGetConfigAttrib(egl_display,
-            configs[i], EGL_NATIVE_VISUAL_ID,
-            &id))
+        if (!eglGetConfigAttrib(egl_display, configs[i], EGL_NATIVE_VISUAL_ID, &id))
             continue;
 
-        printf("common.c:init_egl:match_config_to_visual: eglGetConfigAttrib id=%d visual_id=%d\n", id, visual_id);
         if (id == visual_id)
             return i;
     }
@@ -411,7 +407,7 @@ static bool egl_choose_config(EGLDisplay egl_display, const EGLint* attribs,
         config_index = match_config_to_visual(egl_display, visual_id, configs, matched);
     if (config_index != -1) {
         *config_out = configs[config_index];
-        printf("common.c:init_egl:egl_choose_config: Use index [%d] matched EGL configs\n", config_index);
+        // printf("common.c:init_egl:egl_choose_config: Use index [%d] matched EGL configs\n", config_index);
     }
 
 out:
@@ -460,20 +456,17 @@ int init_egl(struct egl* egl, const struct gbm* gbm, int samples) {
 
 #define get_proc_client(ext, name) do { \
 		if (has_ext(egl_exts_client, #ext)) { \
-			puts("common.c:init_egl: eglGetProcAddress " #name); \
 			egl->name = (void *)eglGetProcAddress(#name); \
 		} \
 		} while (0)
 #define get_proc_dpy(ext, name) do { \
 		if (has_ext(egl_exts_dpy, #ext)) { \
-			puts("common.c:init_egl: eglGetProcAddress " #name); \
 			egl->name = (void*) eglGetProcAddress(#name); \
 		} \
 		} while (0)
 
 #define get_proc_gl(ext, name) do { \
 		if (has_ext(gl_exts, #ext)) {\
-			puts("common.c:init_egl: eglGetProcAddress " #name); \
 			egl->name = (void*) eglGetProcAddress(#name); \
 		} \
 		} while (0)
@@ -496,15 +489,15 @@ int init_egl(struct egl* egl, const struct gbm* gbm, int samples) {
     egl->modifiers_supported = has_ext(egl_exts_dpy,
         "EGL_EXT_image_dma_buf_import_modifiers");
 
-    printf("Using EGL Library version %d.%d\n", major, minor);
+    // printf("Using EGL Library version %d.%d\n", major, minor);
 
-    printf("===================================\n");
+    printf("\n===================================\n");
     printf("EGL information:\n");
-    printf("  version: \"%s\"\n", eglQueryString(egl->display, EGL_VERSION));
-    printf("  vendor: \"%s\"\n", eglQueryString(egl->display, EGL_VENDOR));
+    printf("  version: %s\n", eglQueryString(egl->display, EGL_VERSION));
+    printf("  vendor: %s\n", eglQueryString(egl->display, EGL_VENDOR));
     // printf("  client extensions: \"%s\"\n", egl_exts_client);
     // printf("  display extensions: \"%s\"\n", egl_exts_dpy);
-    printf("===================================\n");
+    // printf("===================================\n");
 
     if (!eglBindAPI(EGL_OPENGL_ES_API)) {
         printf("failed to bind api EGL_OPENGL_ES_API\n");
@@ -515,18 +508,7 @@ int init_egl(struct egl* egl, const struct gbm* gbm, int samples) {
         printf("failed to choose config\n");
         return -1;
     }
-    EGLint red_size, green_size, blue_size, alpha_size, depth_size, stencil_size, surface_type, render_type;
-    eglGetConfigAttrib(egl->display, egl->config, EGL_RED_SIZE, &red_size);
-    eglGetConfigAttrib(egl->display, egl->config, EGL_GREEN_SIZE, &green_size);
-    eglGetConfigAttrib(egl->display, egl->config, EGL_BLUE_SIZE, &blue_size);
-    eglGetConfigAttrib(egl->display, egl->config, EGL_ALPHA_SIZE, &alpha_size);
-    eglGetConfigAttrib(egl->display, egl->config, EGL_DEPTH_SIZE, &depth_size);
-    eglGetConfigAttrib(egl->display, egl->config, EGL_STENCIL_SIZE, &stencil_size);
-    eglGetConfigAttrib(egl->display, egl->config, EGL_SURFACE_TYPE, &surface_type);
-    eglGetConfigAttrib(egl->display, egl->config, EGL_RENDERABLE_TYPE, &render_type);
-    printf("Chosen Config R:%d G:%d B:%d A:%d Depth:%d Stencil:%d Surface=0x%08X Render=0x%08X\n", red_size, green_size, blue_size, alpha_size, depth_size, stencil_size, surface_type, render_type);
-    egl->context = eglCreateContext(egl->display, egl->config,
-        EGL_NO_CONTEXT, context_attribs);
+    egl->context = eglCreateContext(egl->display, egl->config, EGL_NO_CONTEXT, context_attribs);
     if (egl->context == EGL_NO_CONTEXT) {
         printf("failed to create context\n");
         return -1;
@@ -545,13 +527,22 @@ int init_egl(struct egl* egl, const struct gbm* gbm, int samples) {
     eglMakeCurrent(egl->display, egl->surface, egl->surface, egl->context);
     gl_exts = (char*) glGetString(GL_EXTENSIONS);
     printf("OpenGL ES information:\n");
-    printf("  version: \"%s\"\n", glGetString(GL_VERSION));
-    printf("  shading language version: \"%s\"\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
-    printf("  vendor: \"%s\"\n", glGetString(GL_VENDOR));
-    printf("  renderer: \"%s\"\n", glGetString(GL_RENDERER));
+    printf("  version: %s\n", glGetString(GL_VERSION));
+    printf("  shading language version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
+    printf("  vendor: %s\n", glGetString(GL_VENDOR));
+    printf("  renderer: %s\n", glGetString(GL_RENDERER));
     // printf("  extensions: \"%s\"\n", gl_exts);
     printf("===================================\n");
-
+    EGLint red_size, green_size, blue_size, alpha_size, depth_size, stencil_size, surface_type, render_type;
+    eglGetConfigAttrib(egl->display, egl->config, EGL_RED_SIZE, &red_size);
+    eglGetConfigAttrib(egl->display, egl->config, EGL_GREEN_SIZE, &green_size);
+    eglGetConfigAttrib(egl->display, egl->config, EGL_BLUE_SIZE, &blue_size);
+    eglGetConfigAttrib(egl->display, egl->config, EGL_ALPHA_SIZE, &alpha_size);
+    eglGetConfigAttrib(egl->display, egl->config, EGL_DEPTH_SIZE, &depth_size);
+    eglGetConfigAttrib(egl->display, egl->config, EGL_STENCIL_SIZE, &stencil_size);
+    eglGetConfigAttrib(egl->display, egl->config, EGL_SURFACE_TYPE, &surface_type);
+    eglGetConfigAttrib(egl->display, egl->config, EGL_RENDERABLE_TYPE, &render_type);
+    printf("Chosen Config R:%d G:%d B:%d A:%d Depth:%d Stencil:%d Surface=0x%08X Render=0x%08X\n", red_size, green_size, blue_size, alpha_size, depth_size, stencil_size, surface_type, render_type);
     return 0;
 }
 
@@ -559,10 +550,10 @@ static void drm_fb_destroy_callback(struct gbm_bo* bo, void* data) {
     int drm_fd = gbm_device_get_fd(gbm_bo_get_device(bo));
     struct drm_fb* fb = data;
     if (fb->fb_id) {
-        puts("drm-common.c: drmModeRmFB");
         drmModeRmFB(drm_fd, fb->fb_id);
     }
     free(fb);
+    puts("Cleaning up [OK]");
 }
 
 struct drm_fb* drm_fb_get_from_bo(struct gbm_bo* bo) {
@@ -815,7 +806,7 @@ int main(int argc, char* argv[]) {
         printf("failed to initialize DRM. Code %d\n", ret);
         return ret;
     } else {
-        printf("Initialize DRM Fullscreen %dx%d [OK]\n", drm.mode->hdisplay, drm.mode->vdisplay);
+        printf("Initializing DRM fullscreen %dx%d [OK]\n", drm.mode->hdisplay, drm.mode->vdisplay);
     }
 
     ret = init_gbm(&gbm, drm.fd, drm.mode->hdisplay, drm.mode->vdisplay, format, modifier);
@@ -823,7 +814,7 @@ int main(int argc, char* argv[]) {
         printf("failed to initialize GBM. Code %d\n", ret);
         return ret;
     } else {
-        printf("Initialize GBM [OK]\n");
+        printf("Initializing GBM [OK]\n");
     }
 
     ret = init_egl(&egl, &gbm, samples);
@@ -831,22 +822,18 @@ int main(int argc, char* argv[]) {
         printf("failed to initialize EGL. Code %d\n", ret);
         return ret;
     } else {
-        printf("initialize EGL [OK]\n");
+        printf("Initializing EGL [OK]\n");
     }
 
     GLuint program = create_program(vertexShaderSource, fragmentShaderSource);
     if (program < 0) {  // return program negative = ERROR
         printf("failed to compile shader. Code %d\n", program);
         return program;
-    } else {
-        printf("Compile shader [OK]\n");
     }
     ret = link_program(program);
     if (ret) {
         printf("failed to link shader. Code %d\n", ret);
         return ret;
-    } else {
-        printf("Link shader [OK]\n");
     }
     glUseProgram(program);
 
@@ -867,7 +854,7 @@ int main(int argc, char* argv[]) {
     glVertexAttribPointer(position, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (void*) 0);
     glEnableVertexAttribArray(position);
     glViewport(0, 0, gbm.width, gbm.height);
-    printf("Windows created %dx%d [OK]\n", gbm.width, gbm.height);
+    puts("Initializing OpenGL(ES) [OK]");
 
     // ============================================================================================
     // GL drawing loop
