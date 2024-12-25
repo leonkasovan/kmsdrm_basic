@@ -1,9 +1,9 @@
 /*
-Basic KMSDRM with double buffer swapped (page flipped) when vertical blank
+Basic OpenGL ES App in KMSDRM with double buffer swapped (page flipped) when vertical blank
 based on kmscube
  */
 
-#include "basic4.h"
+#include "basic_opengles_2buffer.h"
 
 #ifdef DEBUG
 #define debug_puts puts
@@ -111,7 +111,7 @@ static int get_resources(int fd, drmModeRes** resources) {
 static int find_drm_device(drmModeRes** resources) {
     drmDevicePtr devices[MAX_DRM_DEVICES] = { NULL };
     int num_devices, fd = -1;
-    
+
     debug_puts("find_drm_device: drmGetDevices2");
     num_devices = drmGetDevices2(0, devices, MAX_DRM_DEVICES);
     if (num_devices < 0) {
@@ -847,7 +847,7 @@ int main(int argc, char* argv[]) {
     int samples = 0;
     int connector_id = -1;
     unsigned int vrefresh = 0;
-    unsigned int count = 60;
+    unsigned int count = 120;
     bool nonblocking = false;
     int ret;
 
