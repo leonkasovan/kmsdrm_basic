@@ -17,6 +17,7 @@ rpi4: /usr/include/drm.h /usr/include/drm_mode.h rpi4_double rpi4_single
 
 rpi4_double:
 	$(CC) -DRPI4 -o basic_double_buffer glad.c basic_double_buffer.c -ldrm -lgbm -lGLESv2 -lEGL
+#	$(CC) -DDEBUG -DRPI4 -o basic_double_buffer glad.c basic_double_buffer.c -ldrm -lgbm -lGLESv2 -lEGL
 
 rpi4_single:
 	$(CC) -DRPI4 -o basic_single_buffer glad.c basic_single_buffer.c -ldrm -lgbm -lGLESv2 -lEGL
