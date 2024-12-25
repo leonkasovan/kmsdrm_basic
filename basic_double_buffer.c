@@ -831,7 +831,8 @@ SHADER_HEADER
 
 // #define WINDOW_SIZE "640x480"
 // #define WINDOW_SIZE "800x600"
-#define WINDOW_SIZE "1024x768"
+// #define WINDOW_SIZE "1024x768"
+#define WINDOW_SIZE ""
 
 int main(int argc, char* argv[]) {
     const char* device = NULL;
@@ -846,7 +847,7 @@ int main(int argc, char* argv[]) {
     int samples = 0;
     int connector_id = -1;
     unsigned int vrefresh = 0;
-    unsigned int count = 4;
+    unsigned int count = 60;
     bool nonblocking = false;
     int ret;
 
