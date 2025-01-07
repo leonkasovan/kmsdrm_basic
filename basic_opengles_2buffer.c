@@ -789,10 +789,8 @@ static struct egl egl;
 
 #ifdef RG353P
 #define SHADER_HEADER "#version 320 es\nprecision mediump float;\n"
-#elif defined(RPI4)
-#define SHADER_HEADER "#version 300 es\nprecision mediump float;\n"
 #else
-#define SHADER_HEADER "#version 300\nprecision mediump float;\n"
+#define SHADER_HEADER "#version 300 es\nprecision mediump float;\n"
 #endif
 
 // Vertex Shader Source Code
@@ -847,7 +845,7 @@ int main(int argc, char* argv[]) {
     int samples = 0;
     int connector_id = -1;
     unsigned int vrefresh = 0;
-    unsigned int count = 120;
+    unsigned int count = 3;
     bool nonblocking = false;
     int ret;
 
@@ -860,6 +858,7 @@ int main(int argc, char* argv[]) {
     }
 
     ret = init_gbm(&gbm, drm.fd, drm.mode->hdisplay, drm.mode->vdisplay, format, modifier);
+    // ret = init_gbm(&gbm, drm.fd, 300, 300, format, modifier);
     if (ret) {
         debug_printf("failed to initialize GBM. Code %d\n", ret);
         return ret;

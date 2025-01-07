@@ -1,3 +1,16 @@
+steamdeck: steamdeck_basic_opengles_2buffer steamdeck_basic_opengles_1buffer steamdeck_basic_opengl_2buffer
+
+steamdeck_basic_opengles_2buffer: basic_opengles_2buffer.c basic_opengles_2buffer.h
+	$(CC) -DDEBUG -I/usr/include/libdrm -g -o steamdeck_basic_opengles_2buffer gles/glad.c basic_opengles_2buffer.c -ldrm -lgbm -lGLESv2 -lEGL
+#	$(CC) -DDEBUG -o steamdeck_basic_opengles_2buffer gles/glad.c basic_opengles_2buffer.c -ldrm -lgbm -lGLESv2 -lEGL
+
+steamdeck_basic_opengles_1buffer: basic_opengles_1buffer.c
+	$(CC) -I/usr/include/libdrm -g -o steamdeck_basic_opengles_1buffer gles/glad.c basic_opengles_1buffer.c -ldrm -lgbm -lGLESv2 -lEGL
+
+steamdeck_basic_opengl_2buffer: basic_opengl_2buffer.c basic_opengl_2buffer.h
+	$(CC) -I/usr/include/libdrm -DGL_GLEXT_PROTOTYPES -g -o steamdeck_basic_opengl_2buffer gl/glad.c basic_opengl_2buffer.c -ldrm -lgbm -lGL -lEGL
+#	$(CC) -I/usr/include/libdrm -DDEBUG -DGL_GLEXT_PROTOTYPES -o steamdeck_basic_opengl_2buffer gl/glad.c basic_opengl_2buffer.c -ldrm -lgbm -lGL -lEGL
+
 rpi4: /usr/include/drm.h /usr/include/drm_mode.h rpi4_basic_opengles_2buffer rpi4_basic_opengles_1buffer rpi4_basic_opengl_2buffer
 
 /usr/include/drm.h:
