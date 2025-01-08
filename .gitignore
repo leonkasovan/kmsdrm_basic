@@ -3,3 +3,6 @@ rpi4_basic_opengles_1buffer
 rpi4_basic_opengl_2buffer
 rg353p_basic_opengles_2buffer
 rg353p_basic_opengles_1buffer
+steamdeck_basic_opengl_2buffer
+steamdeck_basic_opengles_1buffer
+steamdeck_basic_opengles_2buffer

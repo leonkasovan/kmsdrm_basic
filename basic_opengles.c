@@ -3,7 +3,7 @@ Basic OpenGL ES App in KMSDRM with double buffer swapped (page flipped) when ver
 based on kmscube
  */
 
-#include "basic_opengles_2buffer.h"
+#include "basic_opengles.h"
 
 #ifdef DEBUG
 #define debug_puts puts
@@ -75,6 +75,8 @@ int create_program(const char* vs_src, const char* fs_src) {
     program = glCreateProgram();
     glAttachShader(program, vertex_shader);
     glAttachShader(program, fragment_shader);
+    glDeleteShader(vertex_shader);
+    glDeleteShader(fragment_shader);
     return program;
 }
 
@@ -95,6 +97,8 @@ int link_program(unsigned program) {
             debug_printf("%s", log);
             free(log);
         }
+        glDeleteProgram(program);
+        program = 0;
         return -1;
     }
     return 0;
@@ -223,7 +227,6 @@ static drmModeConnector* find_drm_connector(int fd, drmModeRes* resources,
 
 int init_drm(struct drm* drm, const char* device, const char* mode_str, int connector_id, unsigned int vrefresh, unsigned int count, bool nonblocking) {
     drmModeRes* resources;
-    drmModeConnector* connector = NULL;
     drmModeEncoder* encoder = NULL;
     int i, ret, area;
 
@@ -247,8 +250,8 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
     }
 
     /* find a connected connector: */
-    connector = find_drm_connector(drm->fd, resources, connector_id);
-    if (!connector) {
+    drm->connected_connector = find_drm_connector(drm->fd, resources, connector_id);
+    if (!drm->connected_connector) {
         /* we could be fancy and listen for hotplug events and wait for
          * a connector..
          */
@@ -258,8 +261,8 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
 
     /* find user requested mode: */
     if (mode_str && *mode_str) {
-        for (i = 0; i < connector->count_modes; i++) {
-            drmModeModeInfo* current_mode = &connector->modes[i];
+        for (i = 0; i < drm->connected_connector->count_modes; i++) {
+            drmModeModeInfo* current_mode = &drm->connected_connector->modes[i];
 
             if (strcmp(current_mode->name, mode_str) == 0) {
                 if (vrefresh == 0 || current_mode->vrefresh == vrefresh) {
@@ -275,8 +278,8 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
 
     /* find preferred mode or the highest resolution mode: */
     if (!drm->mode) {
-        for (i = 0, area = 0; i < connector->count_modes; i++) {
-            drmModeModeInfo* current_mode = &connector->modes[i];
+        for (i = 0, area = 0; i < drm->connected_connector->count_modes; i++) {
+            drmModeModeInfo* current_mode = &drm->connected_connector->modes[i];
 
             if (current_mode->type & DRM_MODE_TYPE_PREFERRED) {
                 drm->mode = current_mode;
@@ -294,7 +297,15 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
     }
 
     if (!drm->mode) {
-        printf("init_drm: could not find mode!\n");
+        printf("init_drm: could not find mode!\nSelect valid mode:\n");
+        for (i = 0, area = 0; i < drm->connected_connector->count_modes; i++) {
+            drmModeModeInfo* current_mode = &drm->connected_connector->modes[i];
+            if (current_mode->type & DRM_MODE_TYPE_PREFERRED) {
+                printf("[%d] %s %dx%d #\n", i, current_mode->name, current_mode->hdisplay, current_mode->vdisplay);
+            } else {
+                printf("[%d] %s %dx%d\n", i, current_mode->name, current_mode->hdisplay, current_mode->vdisplay);
+            }
+        }
         return -1;
     }
 
@@ -302,7 +313,7 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
     for (i = 0; i < resources->count_encoders; i++) {
         debug_puts("drmModeGetEncoder");
         encoder = drmModeGetEncoder(drm->fd, resources->encoders[i]);
-        if (encoder->encoder_id == connector->encoder_id)
+        if (encoder->encoder_id == drm->connected_connector->encoder_id)
             break;
         debug_puts("drmModeFreeEncoder");
         drmModeFreeEncoder(encoder);
@@ -311,8 +322,9 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
 
     if (encoder) {
         drm->crtc_id = encoder->crtc_id;
+        drmModeFreeEncoder(encoder);
     } else {
-        int32_t crtc_id = find_crtc_for_connector(drm, resources, connector);
+        int32_t crtc_id = find_crtc_for_connector(drm, resources, drm->connected_connector);
         if (crtc_id == -1) {
             printf("init_drm: no crtc found!\n");
             return -1;
@@ -330,7 +342,7 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
     }
     debug_puts("drmModeFreeResources");
     drmModeFreeResources(resources);
-    drm->connector_id = connector->connector_id;
+    drm->connector_id = drm->connected_connector->connector_id;
     drm->count = count;
     drm->nonblocking = nonblocking;
     return 0;
@@ -338,7 +350,7 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
 
 int init_surface(struct gbm* gbm, uint64_t modifier) {
     if (gbm_surface_create_with_modifiers) {
-        debug_printf("init_surface: gbm_surface_create_with_modifiers gbm.device:%d gbm.width=%d gbm.height=%d, gbm.format=%d modifier=%d\n", gbm->dev, gbm->width, gbm->height, gbm->format, modifier);
+        debug_printf("init_surface: gbm_surface_create_with_modifiers gbm.device:%p gbm.width=%d gbm.height=%d, gbm.format=%d modifier=%d\n", gbm->dev, gbm->width, gbm->height, gbm->format, modifier);
         gbm->surface = gbm_surface_create_with_modifiers(gbm->dev, gbm->width, gbm->height, gbm->format, &modifier, 1);
     }
 
@@ -347,7 +359,7 @@ int init_surface(struct gbm* gbm, uint64_t modifier) {
             debug_printf("Modifiers requested but support isn't available\n");
             return -2;
         }
-        debug_printf("init_surface: gbm_surface_create gbm.device:%d gbm.width=%d gbm.height=%d, gbm.format=%d modifier=%d", gbm->dev, gbm->width, gbm->height, gbm->format, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+        debug_printf("init_surface: gbm_surface_create gbm.device:%p gbm.width=%d gbm.height=%d, gbm.format=%d modifier=%d", gbm->dev, gbm->width, gbm->height, gbm->format, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
         gbm->surface = gbm_surface_create(gbm->dev, gbm->width, gbm->height, gbm->format, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
     }
     if (!gbm->surface) {
@@ -424,8 +436,7 @@ static bool egl_choose_config(EGLDisplay egl_display, const EGLint* attribs,
     if (!configs)
         return false;
 
-    if (!eglChooseConfig(egl_display, attribs, configs,
-        count, &matched) || !matched) {
+    if (!eglChooseConfig(egl_display, attribs, configs, count, &matched) || !matched) {
         debug_printf("egl_choose_config: No EGL configs with appropriate attributes.\n");
         goto out;
     }
@@ -465,41 +476,39 @@ int init_egl(struct egl* egl, const struct gbm* gbm, int samples) {
         EGL_ALPHA_SIZE, 0,
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
         EGL_SAMPLES, samples,
-        EGL_NONE
-    };
+        EGL_NONE };
 #else
     const EGLint config_attribs[] = {
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
         EGL_RED_SIZE, 8,
         EGL_GREEN_SIZE, 8,
         EGL_BLUE_SIZE, 8,
-        EGL_ALPHA_SIZE, 8,               // Alpha component size (if needed)
-        EGL_DEPTH_SIZE, 24,              // Depth buffer size
-        EGL_STENCIL_SIZE, 8,             // Stencil buffer size
+        EGL_ALPHA_SIZE, 8,   // Alpha component size (if needed)
+        EGL_DEPTH_SIZE, 24,  // Depth buffer size
+        EGL_STENCIL_SIZE, 8, // Stencil buffer size
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
         EGL_SAMPLES, samples,
-        EGL_NONE
-    };
+        EGL_NONE };
 #endif
 
     const char* egl_exts_client, * egl_exts_dpy, * gl_exts;
 
 #define get_proc_client(ext, name) do { \
 		if (has_ext(egl_exts_client, #ext)) { \
-			egl->name = (void *)eglGetProcAddress(#name); \
+            egl->name = (void *)eglGetProcAddress(#name); \
 		} \
-		} while (0)
+    } while (0)
 #define get_proc_dpy(ext, name) do { \
 		if (has_ext(egl_exts_dpy, #ext)) { \
 			egl->name = (void*) eglGetProcAddress(#name); \
 		} \
-		} while (0)
+    } while (0)
 
 #define get_proc_gl(ext, name) do { \
 		if (has_ext(gl_exts, #ext)) {\
 			egl->name = (void*) eglGetProcAddress(#name); \
 		} \
-		} while (0)
+    } while (0)
 
     egl_exts_client = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
     get_proc_client(EGL_EXT_platform_base, eglGetPlatformDisplayEXT);
@@ -658,7 +667,7 @@ struct drm_fb* drm_fb_get_from_bo(struct gbm_bo* bo) {
 
 static void page_flip_handler(int fd, unsigned int frame,
     unsigned int sec, unsigned int usec, void* data) {
-    /* suppress 'unused parameter' warnings */
+/* suppress 'unused parameter' warnings */
     (void) fd, (void) frame, (void) sec, (void) usec;
 
     int* waiting_for_flip = data;
@@ -668,8 +677,8 @@ static void page_flip_handler(int fd, unsigned int frame,
 static int run_gl_loop(const struct gbm* gbm, const struct egl* egl, struct drm* drm) {
     fd_set fds;
     drmEventContext evctx = {
-            .version = 2,
-            .page_flip_handler = page_flip_handler,
+        .version = 2,
+        .page_flip_handler = page_flip_handler,
     };
     struct gbm_bo* bo;
     struct drm_fb* fb;
@@ -762,7 +771,7 @@ static int run_gl_loop(const struct gbm* gbm, const struct egl* egl, struct drm*
         if (cur_time > (report_time + 2 * NSEC_PER_SEC)) {
             double elapsed_time = cur_time - start_time;
             double secs = elapsed_time / (double) NSEC_PER_SEC;
-            unsigned frames = i - 1;  /* first frame ignored */
+            unsigned frames = i - 1; /* first frame ignored */
             debug_printf("Rendered %u frames in %f sec (%f fps)\n", frames, secs, (double) frames / secs);
             report_time = cur_time;
         }
@@ -778,7 +787,7 @@ static int run_gl_loop(const struct gbm* gbm, const struct egl* egl, struct drm*
     cur_time = get_time_ns();
     double elapsed_time = cur_time - start_time;
     double secs = elapsed_time / (double) NSEC_PER_SEC;
-    unsigned frames = i - 1;  /* first frame ignored */
+    unsigned frames = i - 1; /* first frame ignored */
     printf("Rendered %u frames in %f sec (%f fps)\n", frames, secs, (double) frames / secs);
     return 0;
 }
@@ -830,7 +839,7 @@ SHADER_HEADER
 // #define WINDOW_SIZE "640x480"
 // #define WINDOW_SIZE "800x600"
 // #define WINDOW_SIZE "1024x768"
-#define WINDOW_SIZE ""
+#define WINDOW_SIZE "400x400"
 
 int main(int argc, char* argv[]) {
     const char* device = NULL;
@@ -858,12 +867,17 @@ int main(int argc, char* argv[]) {
     }
 
     ret = init_gbm(&gbm, drm.fd, drm.mode->hdisplay, drm.mode->vdisplay, format, modifier);
-    // ret = init_gbm(&gbm, drm.fd, 300, 300, format, modifier);
     if (ret) {
         debug_printf("failed to initialize GBM. Code %d\n", ret);
         return ret;
     } else {
         debug_printf("Initializing GBM [OK]\n");
+    }
+
+    // Load GLAD to manage OpenGL function pointers
+    if (!gladLoadGLES2Loader((GLADloadproc) eglGetProcAddress)) {
+        fprintf(stderr, "Failed to initialize GLAD\n");
+        return -1;
     }
 
     ret = init_egl(&egl, &gbm, samples);
@@ -875,7 +889,7 @@ int main(int argc, char* argv[]) {
     }
 
     GLuint program = create_program(vertexShaderSource, fragmentShaderSource);
-    if (program < 0) {  // return program negative = ERROR
+    if (program < 0) { // return program negative = ERROR
         debug_printf("failed to compile shader. Code %d\n", program);
         return program;
     }
@@ -890,8 +904,8 @@ int main(int argc, char* argv[]) {
     // GL init setup
     // ============================================================================================
     GLfloat vertices[] = {
-        0.0f,  0.5f,  // Top
-       -0.5f, -0.5f,  // Bottom left
+        0.0f, 0.5f,   // Top
+        -0.5f, -0.5f, // Bottom left
         0.5f, -0.5f   // Bottom right
     };
     GLuint vbo;
@@ -910,5 +924,38 @@ int main(int argc, char* argv[]) {
     // ============================================================================================
     run_gl_loop(&gbm, &egl, &drm);
 
+    // if (program > 0) {
+    glDeleteProgram(program);
+    // }
+
+    if (gbm.surface) {
+        debug_puts("gbm_surface_destroy");
+        gbm_surface_destroy(gbm.surface);
+    }
+
+    if (egl.surface != EGL_NO_SURFACE) {
+        debug_puts("eglDestroySurface");
+        eglDestroySurface(egl.display, egl.surface);
+    }
+
+    if (egl.context != EGL_NO_CONTEXT) {
+        debug_puts("eglDestroyContext");
+        eglDestroyContext(egl.display, egl.context);
+    }
+
+    if (egl.display != EGL_NO_DISPLAY) {
+        debug_puts("eglTerminate");
+        eglTerminate(egl.display);
+    }
+
+    if (drm.connected_connector) {
+        debug_puts("drmModeFreeConnector");
+        drmModeFreeConnector(drm.connected_connector);
+    }
+
+    if (drm.fd) {
+        debug_puts("close drm.fd");
+        close(drm.fd);
+    }
     return 0;
 }

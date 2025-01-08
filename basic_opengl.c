@@ -1,9 +1,9 @@
 /*
 Basic OpenGL App in KMSDRM with double buffer swapped (page flipped) when vertical blank
-based on kmscube
+based on kmscube (c) 2024 Dhani Novan, Jakarta
  */
 
-#include "basic_opengl_2buffer.h"
+#include "basic_opengl.h"
 
 #ifdef DEBUG
 #define debug_puts puts
@@ -75,6 +75,8 @@ int create_program(const char* vs_src, const char* fs_src) {
     program = glCreateProgram();
     glAttachShader(program, vertex_shader);
     glAttachShader(program, fragment_shader);
+    glDeleteShader(vertex_shader);
+    glDeleteShader(fragment_shader);
     return program;
 }
 
@@ -95,6 +97,8 @@ int link_program(unsigned program) {
             debug_printf("%s", log);
             free(log);
         }
+        glDeleteProgram(program);
+        program = 0;
         return -1;
     }
     return 0;
@@ -223,7 +227,6 @@ static drmModeConnector* find_drm_connector(int fd, drmModeRes* resources,
 
 int init_drm(struct drm* drm, const char* device, const char* mode_str, int connector_id, unsigned int vrefresh, unsigned int count, bool nonblocking) {
     drmModeRes* resources;
-    drmModeConnector* connector = NULL;
     drmModeEncoder* encoder = NULL;
     int i, ret, area;
 
@@ -247,8 +250,8 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
     }
 
     /* find a connected connector: */
-    connector = find_drm_connector(drm->fd, resources, connector_id);
-    if (!connector) {
+    drm->connected_connector = find_drm_connector(drm->fd, resources, connector_id);
+    if (!drm->connected_connector) {
         /* we could be fancy and listen for hotplug events and wait for
          * a connector..
          */
@@ -258,8 +261,8 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
 
     /* find user requested mode: */
     if (mode_str && *mode_str) {
-        for (i = 0; i < connector->count_modes; i++) {
-            drmModeModeInfo* current_mode = &connector->modes[i];
+        for (i = 0; i < drm->connected_connector->count_modes; i++) {
+            drmModeModeInfo* current_mode = &drm->connected_connector->modes[i];
 
             if (strcmp(current_mode->name, mode_str) == 0) {
                 if (vrefresh == 0 || current_mode->vrefresh == vrefresh) {
@@ -275,8 +278,8 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
 
     /* find preferred mode or the highest resolution mode: */
     if (!drm->mode) {
-        for (i = 0, area = 0; i < connector->count_modes; i++) {
-            drmModeModeInfo* current_mode = &connector->modes[i];
+        for (i = 0, area = 0; i < drm->connected_connector->count_modes; i++) {
+            drmModeModeInfo* current_mode = &drm->connected_connector->modes[i];
 
             if (current_mode->type & DRM_MODE_TYPE_PREFERRED) {
                 drm->mode = current_mode;
@@ -294,7 +297,15 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
     }
 
     if (!drm->mode) {
-        printf("init_drm: could not find mode!\n");
+        printf("init_drm: could not find mode!\nSelect valid mode:\n");
+        for (i = 0, area = 0; i < drm->connected_connector->count_modes; i++) {
+            drmModeModeInfo* current_mode = &drm->connected_connector->modes[i];
+            if (current_mode->type & DRM_MODE_TYPE_PREFERRED) {
+                printf("[%d] %s %dx%d #\n", i, current_mode->name, current_mode->hdisplay, current_mode->vdisplay);
+            } else {
+                printf("[%d] %s %dx%d\n", i, current_mode->name, current_mode->hdisplay, current_mode->vdisplay);
+            }
+        }
         return -1;
     }
 
@@ -302,7 +313,7 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
     for (i = 0; i < resources->count_encoders; i++) {
         debug_puts("drmModeGetEncoder");
         encoder = drmModeGetEncoder(drm->fd, resources->encoders[i]);
-        if (encoder->encoder_id == connector->encoder_id)
+        if (encoder->encoder_id == drm->connected_connector->encoder_id)
             break;
         debug_puts("drmModeFreeEncoder");
         drmModeFreeEncoder(encoder);
@@ -311,8 +322,9 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
 
     if (encoder) {
         drm->crtc_id = encoder->crtc_id;
+        drmModeFreeEncoder(encoder);
     } else {
-        int32_t crtc_id = find_crtc_for_connector(drm, resources, connector);
+        int32_t crtc_id = find_crtc_for_connector(drm, resources, drm->connected_connector);
         if (crtc_id == -1) {
             printf("init_drm: no crtc found!\n");
             return -1;
@@ -330,7 +342,7 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
     }
     debug_puts("drmModeFreeResources");
     drmModeFreeResources(resources);
-    drm->connector_id = connector->connector_id;
+    drm->connector_id = drm->connected_connector->connector_id;
     drm->count = count;
     drm->nonblocking = nonblocking;
     return 0;
@@ -338,7 +350,7 @@ int init_drm(struct drm* drm, const char* device, const char* mode_str, int conn
 
 int init_surface(struct gbm* gbm, uint64_t modifier) {
     if (gbm_surface_create_with_modifiers) {
-        debug_printf("init_surface: gbm_surface_create_with_modifiers gbm.device:%d gbm.width=%d gbm.height=%d, gbm.format=%d modifier=%d\n", gbm->dev, gbm->width, gbm->height, gbm->format, modifier);
+        debug_printf("init_surface: gbm_surface_create_with_modifiers gbm.device:%p gbm.width=%d gbm.height=%d, gbm.format=%d modifier=%d\n", gbm->dev, gbm->width, gbm->height, gbm->format, modifier);
         gbm->surface = gbm_surface_create_with_modifiers(gbm->dev, gbm->width, gbm->height, gbm->format, &modifier, 1);
     }
 
@@ -347,7 +359,7 @@ int init_surface(struct gbm* gbm, uint64_t modifier) {
             debug_printf("Modifiers requested but support isn't available\n");
             return -2;
         }
-        debug_printf("init_surface: gbm_surface_create gbm.device:%d gbm.width=%d gbm.height=%d, gbm.format=%d modifier=%d", gbm->dev, gbm->width, gbm->height, gbm->format, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+        debug_printf("init_surface: gbm_surface_create gbm.device:%p gbm.width=%d gbm.height=%d, gbm.format=%d modifier=%d", gbm->dev, gbm->width, gbm->height, gbm->format, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
         gbm->surface = gbm_surface_create(gbm->dev, gbm->width, gbm->height, gbm->format, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
     }
     if (!gbm->surface) {
@@ -424,8 +436,7 @@ static bool egl_choose_config(EGLDisplay egl_display, const EGLint* attribs,
     if (!configs)
         return false;
 
-    if (!eglChooseConfig(egl_display, attribs, configs,
-        count, &matched) || !matched) {
+    if (!eglChooseConfig(egl_display, attribs, configs, count, &matched) || !matched) {
         debug_printf("egl_choose_config: No EGL configs with appropriate attributes.\n");
         goto out;
     }
@@ -787,12 +798,10 @@ static struct gbm gbm;
 static struct drm drm;
 static struct egl egl;
 
-#ifdef RG353P
-#define SHADER_HEADER "#version 320 es\nprecision mediump float;\n"
-#elif defined(RPI4)
-#define SHADER_HEADER "#version 300 es\nprecision mediump float;\n"
-#else
+#ifdef RPI4
 #define SHADER_HEADER "#version 300\nprecision mediump float;\n"
+#else
+#define SHADER_HEADER "#version 320\nprecision mediump float;\n"
 #endif
 
 // Vertex Shader Source Code
@@ -847,7 +856,7 @@ int main(int argc, char* argv[]) {
     int samples = 0;
     int connector_id = -1;
     unsigned int vrefresh = 0;
-    unsigned int count = 120;
+    unsigned int count = 240;
     bool nonblocking = false;
     int ret;
 
@@ -865,6 +874,12 @@ int main(int argc, char* argv[]) {
         return ret;
     } else {
         debug_printf("Initializing GBM [OK]\n");
+    }
+
+    // Load GLAD to manage OpenGL function pointers
+    if (!gladLoadGL()) {
+        fprintf(stderr, "Failed to initialize GLAD\n");
+        return -1;
     }
 
     ret = init_egl(&egl, &gbm, samples);
@@ -911,5 +926,38 @@ int main(int argc, char* argv[]) {
     // ============================================================================================
     run_gl_loop(&gbm, &egl, &drm);
 
+    // if (program > 0) {
+    glDeleteProgram(program);
+    // }
+
+    if (gbm.surface) {
+        debug_puts("gbm_surface_destroy");
+        gbm_surface_destroy(gbm.surface);
+    }
+
+    if (egl.surface != EGL_NO_SURFACE) {
+        debug_puts("eglDestroySurface");
+        eglDestroySurface(egl.display, egl.surface);
+    }
+
+    if (egl.context != EGL_NO_CONTEXT) {
+        debug_puts("eglDestroyContext");
+        eglDestroyContext(egl.display, egl.context);
+    }
+
+    if (egl.display != EGL_NO_DISPLAY) {
+        debug_puts("eglTerminate");
+        eglTerminate(egl.display);
+    }
+
+    if (drm.connected_connector) {
+        debug_puts("drmModeFreeConnector");
+        drmModeFreeConnector(drm.connected_connector);
+    }
+
+    if (drm.fd) {
+        debug_puts("close drm.fd");
+        close(drm.fd);
+    }
     return 0;
 }

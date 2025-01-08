@@ -24,6 +24,7 @@
 #ifndef _COMMON_H
 #define _COMMON_H
 
+#include "gles/glad.h"
 #include <inttypes.h>
 #include <fcntl.h>
 #include <time.h>
@@ -36,8 +37,6 @@
 #include <libdrm/drm.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
-#include <GLES2/gl2.h>
-#include <GLES2/gl2ext.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <gbm.h>
@@ -82,6 +81,7 @@ struct drm {
     uint32_t connector_id;
     unsigned int count;
     bool nonblocking;
+    drmModeConnector *connected_connector;
 };
 
 struct drm_fb {

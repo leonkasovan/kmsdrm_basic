@@ -94,12 +94,13 @@ int open_gl(void) {
         "/System/Library/Frameworks/OpenGL.framework/Versions/Current/OpenGL"
     };
 #else
-    static const char *NAMES[] = {"libGL.so.1", "libGL.so"};
+	static const char* NAMES[] = { "/usr/lib64/libGL.so.1", "/usr/lib64/libGL.so" };
 #endif
 
     unsigned int index = 0;
-    for(index = 0; index < (sizeof(NAMES) / sizeof(NAMES[0])); index++) {
-        libGL = dlopen(NAMES[index], RTLD_NOW | RTLD_GLOBAL);
+	for (index = 0; index < (sizeof(NAMES) / sizeof(NAMES[0])); index++) {
+		printf("[%d] Loading %s\n", index, NAMES[index]);
+		libGL = dlopen(NAMES[index], RTLD_NOW | RTLD_GLOBAL);
 
         if(libGL != NULL) {
 #if defined(__APPLE__) || defined(__HAIKU__)
@@ -148,7 +149,9 @@ void* get_proc(const char *namez) {
 int gladLoadGL(void) {
     int status = 0;
 
-    if(open_gl()) {
+	status = open_gl();
+	printf("status: %d\n", status);
+	if (status) {
         status = gladLoadGLLoader(&get_proc);
         close_gl();
     }
@@ -921,9 +924,11 @@ static void find_coreGL(void) {
 
 int gladLoadGLLoader(GLADloadproc load) {
 	GLVersion.major = 0; GLVersion.minor = 0;
-	glGetString = (PFNGLGETSTRINGPROC)load("glGetString");
-	if(glGetString == NULL) return 0;
-	if(glGetString(GL_VERSION) == NULL) return 0;
+	glGetString = (PFNGLGETSTRINGPROC) load("glGetString");
+	printf("glGetString: %p\n", glGetString);
+	if (glGetString == NULL) return 0;
+	printf("glGetString(GL_VERSION): %s\n", glGetString(GL_VERSION));
+	if (glGetString(GL_VERSION) == NULL) return 0;
 	find_coreGL();
 	load_GL_VERSION_1_0(load);
 	load_GL_VERSION_1_1(load);
@@ -934,6 +939,7 @@ int gladLoadGLLoader(GLADloadproc load) {
 	load_GL_VERSION_2_0(load);
 	load_GL_VERSION_2_1(load);
 	load_GL_VERSION_3_0(load);
+	printf("GL_VERSION: %d.%d\n", GLVersion.major, GLVersion.minor);
 
 	if (!find_extensionsGL()) return 0;
 	return GLVersion.major != 0 || GLVersion.minor != 0;
